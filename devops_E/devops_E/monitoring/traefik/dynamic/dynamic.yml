@@ -1,0 +1,27 @@
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+
+  routers:
+    app:
+      rule: Host(`transcendence.example.com`)
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: app-svc
+      middlewares:
+        - secure-headers
+
+  services:
+    app-svc:
+      loadBalancer:
+        servers:
+          - url: http://frontend:80
