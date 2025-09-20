@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 🗄️ DATABASE (Shared by all services)
   database:
@@ -22,11 +20,11 @@ services:
       timeout: 10s
       retries: 5
 
-  # 🔧 BACKEND SERVICE (Partie A)
+  # 🔧 BACKEND SERVICE (Partie A) - CHEMINS CORRIGÉS
   backend_a:
     build:
-      context: ../backend_a
-      dockerfile: ../devops_e/docker/backend/Dockerfile
+      context: ../backend_a                                    # ← 1 niveau (cohérent avec volumes)
+      dockerfile: ../devops_E/docker/backend/Dockerfile.dev    # ← Utilise .dev pour développement
     container_name: transcendence-backend
     ports:
       - "3000:3000"
@@ -36,7 +34,7 @@ services:
       POSTGRES_DB: transcendence_dev
       POSTGRES_USER: transcendence
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      DATABASE_URL: postgresql://transcendence:dev_secure_f8a9c2e1b4d7@database:5432/transcendence_dev
+      DATABASE_URL: postgresql://transcendence:${POSTGRES_PASSWORD}@database:5432/transcendence_dev
       NODE_ENV: development
       JWT_SECRET: ${JWT_SECRET:-default_jwt_secret}
       PORT: 3000
@@ -53,107 +51,52 @@ services:
       - ../backend_a:/app
       - /app/node_modules
 
-  # 🎨 FRONTEND SERVICE (Partie B)
+  # 🎨 FRONTEND SERVICE VITE (Module 2) - CHEMINS CORRIGÉS
   frontend_b:
-    build:
-      context: ../frontend_b
-      dockerfile: ../devops_e/docker/frontend/Dockerfile.dev
+    image: node:20-alpine
     container_name: transcendence-frontend
+    working_dir: /app
     ports:
       - "5173:5173"
-    environment:
-      VITE_API_URL: http://localhost:3000
-      VITE_AUTH_URL: http://localhost:3001
-      VITE_GAME_URL: ws://localhost:3002
-      VITE_APP_TITLE: Transcendence Dev
-      VITE_NODE_ENV: development
-      VITE_HMR_HOST: 0.0.0.0
     volumes:
-      - ../frontend_b:/app
-      - /app/node_modules
+      # Utilise le chemin absolu complet
+      - /home/edou/code/42/ft_transcendence/frontend_b:/app
     networks:
       - transcendence-network
-    depends_on:
-      - backend_a
-
-  # 🔐 AUTH SERVICE (Partie C)
-  auth_c:
-    build:
-      context: ../auth_c
-      dockerfile: ../devops_e/docker/auth/Dockerfile
-    container_name: transcendence-auth
-    ports:
-      - "3001:3001"
-    environment:
-      NODE_ENV: development
-      PORT: 3001
-      DATABASE_URL: postgresql://transcendence:dev_secure_f8a9c2e1b4d7@database:5432/transcendence_dev
-      JWT_SECRET: ${JWT_SECRET:-default_jwt_secret}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-default_refresh_secret}
-      OAUTH_42_CLIENT_ID: ${OAUTH_42_CLIENT_ID}
-      OAUTH_42_CLIENT_SECRET: ${OAUTH_42_CLIENT_SECRET}
-      OAUTH_42_CALLBACK_URL: http://localhost:3001/auth/42/callback
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      TWO_FA_SERVICE_NAME: Transcendence
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-    depends_on:
-      database:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    networks:
-      - transcendence-network
-    volumes:
-      - ../auth_c:/app
-      - /app/node_modules
-
-  # 🎮 GAME SERVICE (Partie D)
-  game_d:
-    build:
-      context: ../game_d
-      dockerfile: ../devops_e/docker/game/Dockerfile
-    container_name: transcendence-game
-    ports:
-      - "3002:3002"
-    environment:
-      NODE_ENV: development
-      PORT: 3002
-      WEBSOCKET_PORT: 3002
-      DATABASE_URL: postgresql://transcendence:dev_secure_f8a9c2e1b4d7@database:5432/transcendence_dev
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      GAME_MAX_PLAYERS_PER_ROOM: 4
-      GAME_ROOM_CLEANUP_INTERVAL: 300000
-      GAME_PING_INTERVAL: 25000
-      GAME_PING_TIMEOUT: 60000
-    depends_on:
-      database:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    networks:
-      - transcendence-network
-    volumes:
-      - ../game_d:/app
-      - /app/node_modules
+    command: 
+      - sh
+      - -c
+      - |
+        echo "=== NOUVEAU TEST AVEC CHEMIN ABSOLU ==="
+        echo "Contenu de /app:"
+        ls -la /app/
+        if [ -f /app/package.json ]; then
+          echo "=== package.json trouvé ! ==="
+          cat /app/package.json
+          echo "=== Installation npm ==="
+          apk add --no-cache curl
+          npm install
+          echo "=== Démarrage Vite ==="
+          npm run dev
+        else
+          echo "❌ package.json toujours absent"
+          echo "Attente pour debug..."
+          sleep infinity
+        fi
 
   # 🌐 NGINX REVERSE PROXY
   nginx:
     image: nginx:alpine
     container_name: transcendence-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "8081:80"
+      - "8443:443"
     volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend_a
       - frontend_b
-      - auth_c
-      - game_d
     networks:
       - transcendence-network
     restart: unless-stopped
@@ -182,8 +125,8 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -199,17 +142,19 @@ services:
     image: grafana/grafana-oss:12.1.1
     container_name: transcendence-grafana
     ports:
-      - "3001:3000"
+      - "3004:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
     volumes:
-      - ../monitoring/grafana/data:/var/lib/grafana                # <-- bind mount
-      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     restart: unless-stopped
     depends_on:
       - prometheus
+    networks:
+      - transcendence-network
 
   # 📦 CADVISOR (Container metrics)
   cadvisor:
